@@ -4,6 +4,10 @@
 -- ------------------------------------------------------
 -- Server version	5.7.18-0ubuntu0.16.10.1
 
+-- Ensure the target database exists and use it (makes this dump self-contained)
+CREATE DATABASE IF NOT EXISTS `accounts` DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;
+USE `accounts`;
+
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
