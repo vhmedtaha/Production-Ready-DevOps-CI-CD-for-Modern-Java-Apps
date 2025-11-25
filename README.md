@@ -1,3 +1,95 @@
+# vproapp-devops-cicd
+
+> A hands‑on, CI/CD-ready sample for a Java web application demonstrating containerized build & deployment with Docker, Docker Compose, Jenkins and supporting services (RabbitMQ, DB, Elasticsearch).
+
+## Overview
+
+This repository contains a complete example of packaging a Java web application into containers and automating delivery with a Jenkins pipeline. The goal is to provide reusable patterns for developers and DevOps engineers who want a pragmatic starting point for CI/CD with Java webapps.
+
+Key components:
+
+- Dockerfiles for `app`, `db`, and `web` (under `Docker-files/`).
+- `docker-compose.yml` for local multi-container orchestration.
+- Kubernetes-style YAMLs and service manifests (`*-CIP.yml`, `*-dep.yml`) for deploying services like RabbitMQ and database.
+- `Jenkinsfile` demonstrating a pipeline for build, test, image build, and deployment steps.
+- A sample Java web application in `src/` (controllers, services, utils, webapp views).
+
+## Prerequisites
+
+- Java JDK (compatible with project build configuration)
+- Maven (for building the Java app)
+- Docker Engine
+- Docker Compose (optional, for local compose runs)
+- Jenkins (if running CI pipeline)
+
+## Quickstart — Run locally with Docker Compose
+
+1. Build the application jar (from repo root):
+
+```powershell
+mvn clean package -DskipTests
+```
+
+2. Build images (optional — the `Dockerfiles` are provided):
+
+```powershell
+docker build -t vproapp:local -f Docker-files/app/Dockerfile .
+docker build -t vproweb:local -f Docker-files/web/Dockerfile .
+```
+
+3. Start services with Docker Compose:
+
+```powershell
+docker-compose up --build
+```
+
+This will start the app, database and supporting services according to `docker-compose.yml`. Visit the web UI at the address shown in the compose output (typically `http://localhost:8080` depending on the web container configuration).
+
+## CI/CD (Jenkins)
+
+The `Jenkinsfile` in repository root shows a canonical pipeline that:
+
+- Checks out source code
+- Runs Maven build and unit tests
+- Builds Docker images
+- Pushes images to a registry (configure credentials in your Jenkins)
+- Applies deployment manifests to the target environment (example manifests included)
+
+To adapt the pipeline:
+
+- Customize the Docker registry and credentials step.
+- Adjust build/test commands to match your Java/Maven settings.
+- Replace deployment steps with your environment's deployment strategy (kubectl, helm, or remote docker-compose deploy).
+
+## Repository structure
+
+Highlights of the repo layout:
+
+- `Docker-files/` — `app/`, `db/`, `web/` Dockerfiles and nginx config
+- `docker-compose.yml` — Local compose orchestration
+- `Jenkinsfile` — Example pipeline for CI/CD
+- `*.yml` (`*-CIP.yml`, `*-dep.yml`) — Service and deployment manifests (RabbitMQ, DB, etc.)
+- `src/` — Java web application source, resources and tests
+
+## How to customize
+
+- Swap the Maven/Java versions in the `Dockerfile` and Maven configuration.
+- Update environment variables in `docker-compose.yml` and the provided YAMLs for your infrastructure (DB credentials, hostnames, ports).
+- Add or remove services (e.g., Elasticsearch, Memcached) by editing the compose file and manifests.
+
+## Suggested improvements / next steps
+
+- Add a small architecture diagram (PNG/SVG) that shows CI pipeline and runtime topology.
+- Configure automated integration tests in the Jenkins pipeline.
+- Publish Docker images to a registry (Docker Hub, GitHub Container Registry, or private registry).
+
+## Contributing
+
+Contributions are welcome. For changes to CI/CD files or Docker images, please ensure builds run locally (via Maven and Docker) and update the `Jenkinsfile` or compose manifests as needed.
+
+## Contact
+
+Repo owner: `vhmedtaha` — open an issue or submit a pull request for feedback or collaboration.
 
 <!-- README: polished to be actionable for developers and operators -->
 
