@@ -75,27 +75,91 @@ docker push $ecrUri:latest
 
 Replace `<your-account-id>` and `us-east-1` with your AWS account ID and region.
 
-## Create an EKS cluster (example with `eksctl`)
+## Deploy to a self-managed Kubernetes cluster on EC2 (3 nodes)
+
+If you're running a Kubernetes cluster on three EC2 instances (self-managed control plane + workers) rather than EKS, follow these high-level steps. The example below uses `kubeadm` (vanilla Kubernetes). Alternatives include `kops`, `k3s`, or provisioning via Terraform.
+
+1) Provision three EC2 instances
+
+- Create one control-plane (master) instance and two worker instances (or 3 nodes in any role depending on HA needs).
+- Recommended AMI: Ubuntu 22.04 / Amazon Linux 2. Configure security groups to allow SSH (port 22), Kubernetes API (6443) on control plane, and node ports as required.
+- Ensure each node has an IAM role or credentials to pull from ECR, or plan to use imagePullSecrets (see notes below).
+
+2) Prepare nodes (run on all nodes as root or via sudo)
 
 ```powershell
-eksctl create cluster --name vproapp-cluster --region us-east-1 --nodes 3
+# Update & install container runtime (example using Docker)
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt-get update && sudo apt-get install -y docker-ce
+
+# Disable swap (required by kubeadm)
+sudo swapoff -a
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
 ```
 
-This command creates an EKS cluster and configures your `kubectl` `kubeconfig` automatically.
+3) Install Kubernetes tools (on all nodes)
 
-## Deploy to your EKS cluster
+```powershell
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+cat <<EOF | sudo tee /etc/apt/sources.list.d/kubernetes.list
+deb https://apt.kubernetes.io/ kubernetes-xenial main
+EOF
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+```
 
-1. Ensure `kubectl` is pointed at your cluster:
+4) Initialize the control plane (run on control-plane node)
+
+```powershell
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+# follow kubeadm output: copy the `kubeadm join ...` command for worker nodes
+
+# Configure kubectl for the ubuntu user (or your user)
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
+
+5) Install a CNI (network plugin) — e.g., Calico
+
+```powershell
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+```
+
+6) Join worker nodes (run the `kubeadm join ...` command from step 4 on each worker)
+
+7) Verify cluster
 
 ```powershell
 kubectl get nodes
+kubectl get pods -A
 ```
 
-2. Update the Kubernetes manifests (service images) to point to your ECR image URIs. Example manifest edits:
+8) Ensure your nodes can pull images from ECR
 
-- set `image: <your-account-id>.dkr.ecr.<region>.amazonaws.com/vproapp:latest` in the deployment YAML.
+Option A — Node IAM role: attach an IAM role to each EC2 node with permissions to read ECR and the node will be able to pull images directly (recommended for production).
 
-3. Apply manifests:
+Option B — Docker login on nodes (for small/test clusters): run docker login on each node using an ECR-auth token before pods attempt to pull images.
+
+```powershell
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.us-east-1.amazonaws.com
+```
+
+Option C — `imagePullSecrets`: create a Kubernetes secret with ECR credentials and reference it in your deployment manifests.
+
+9) Deploy application manifests
+
+- Update `vproappdep.yml`, `rmq-dep.yml`, and `vprodbdep.yml` to use your ECR image URIs, for example:
+
+```yaml
+image: <your-account-id>.dkr.ecr.us-east-1.amazonaws.com/vproapp:latest
+```
+
+- Apply the manifests from your workstation (with kubeconfig) or from the control-plane node:
 
 ```powershell
 kubectl apply -f vproappdep.yml
@@ -103,12 +167,43 @@ kubectl apply -f rmq-dep.yml
 kubectl apply -f vprodbdep.yml
 ```
 
-4. Monitor rollout:
+10) Monitor rollout
 
 ```powershell
 kubectl rollout status deployment/vproapp
 kubectl get pods -w
+kubectl logs deployment/vproapp -c <container-name>
 ```
+
+Notes & alternatives
+
+- Using `kops` or `kubespray` can simplify creating a production-grade cluster across EC2 instances (networking, autoscaling, upgrades). Consider these for larger environments.
+- For small footprints, `k3s` provides a lightweight Kubernetes distribution that is quick to provision on EC2.
+- Ensure the control plane is backed up and you plan for etcd backups if you run your own control plane nodes.
+
+## CI/CD & Jenkins (self-managed cluster)
+
+If Jenkins will deploy to your self-managed cluster, choose one of these deployment strategies:
+
+- Jenkins agent with `kubectl` and valid `kubeconfig` that can talk to the cluster (secure the kubeconfig). Pipeline runs `kubectl apply`.
+- Jenkins runs `ssh` to the control-plane node and executes `kubectl apply` there (simpler but requires SSH automation).
+
+Example pipeline considerations:
+
+- Ensure the Jenkins agent can authenticate to ECR and your cluster. For nodes pulling images, use node IAM roles or `imagePullSecrets`.
+- Replace `eksctl` steps in the pipeline with the `kubectl apply` steps above or remote SSH commands.
+
+Example deploy step (run by a Jenkins agent with `kubectl` configured):
+
+```groovy
+stage('Deploy') {
+  steps {
+    sh 'kubectl apply -f vproappdep.yml'
+    sh 'kubectl rollout status deployment/vproapp'
+  }
+}
+```
+
 
 ## CI/CD with Jenkins (recommended pipeline)
 
