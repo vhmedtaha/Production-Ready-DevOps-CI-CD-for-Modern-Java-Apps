@@ -1,91 +1,175 @@
 # vproapp-devops-cicd
 
-> A hands‑on, CI/CD-ready sample for a Java web application demonstrating containerized build & deployment with Docker, Docker Compose, Jenkins and supporting services (RabbitMQ, DB, Elasticsearch).
+> Production-minded CI/CD reference for a Java web application — containerized, pipeline-ready, and deployable to your own AWS EKS cluster.
 
 ## Overview
 
-This repository contains a complete example of packaging a Java web application into containers and automating delivery with a Jenkins pipeline. The goal is to provide reusable patterns for developers and DevOps engineers who want a pragmatic starting point for CI/CD with Java webapps.
+`vproapp-devops-cicd` is a practical repository that demonstrates how to build, containerize, test, and deploy a Java web application using Docker, CI/CD (Jenkins), and Kubernetes on AWS (EKS). It's intended as a blueprint you can adapt and extend for real projects.
 
-Key components:
+## Features
 
-- Dockerfiles for `app`, `db`, and `web` (under `Docker-files/`).
-- `docker-compose.yml` for local multi-container orchestration.
-- Kubernetes-style YAMLs and service manifests (`*-CIP.yml`, `*-dep.yml`) for deploying services like RabbitMQ and database.
-- `Jenkinsfile` demonstrating a pipeline for build, test, image build, and deployment steps.
-- A sample Java web application in `src/` (controllers, services, utils, webapp views).
+- End-to-end examples: local Docker + Docker Compose, CI pipeline (`Jenkinsfile`), and Kubernetes manifests for cloud deployment.
+- Services included: application, database, RabbitMQ, and optional Elasticsearch utilities.
+- Opinionated, yet adaptable: default configurations are provided so you can get started quickly and then customize for your environment.
+
+## Architecture (high level)
+
+- Developer: build and test with Maven locally.
+- Build system: Jenkins pipeline runs unit tests, builds Docker images, and pushes images to a registry (e.g., AWS ECR).
+- Runtime: Kubernetes cluster (EKS) runs application, DB and messaging services with provided manifests.
 
 ## Prerequisites
 
-- Java JDK (compatible with project build configuration)
-- Maven (for building the Java app)
-- Docker Engine
-- Docker Compose (optional, for local compose runs)
-- Jenkins (if running CI pipeline)
+- Java JDK and Maven
+- Docker & Docker Compose
+- Git
+- AWS account with permissions to create ECR repositories, EKS clusters, and IAM roles
+- AWS CLI configured with appropriate credentials
+- `eksctl` (or `eksctl` alternatives) to create/manage EKS clusters
+- `kubectl` configured to access your cluster
+- Jenkins (or other CI system) for pipeline automation
 
-## Quickstart — Run locally with Docker Compose
+## Quick local workflow
 
-1. Build the application jar (from repo root):
+1. Build the application artifact:
 
 ```powershell
 mvn clean package -DskipTests
 ```
 
-2. Build images (optional — the `Dockerfiles` are provided):
+2. Build Docker images locally (optional):
 
 ```powershell
 docker build -t vproapp:local -f Docker-files/app/Dockerfile .
 docker build -t vproweb:local -f Docker-files/web/Dockerfile .
 ```
 
-3. Start services with Docker Compose:
+3. Start with Docker Compose for local testing:
 
 ```powershell
 docker-compose up --build
 ```
 
-This will start the app, database and supporting services according to `docker-compose.yml`. Visit the web UI at the address shown in the compose output (typically `http://localhost:8080` depending on the web container configuration).
+4. Stop and clean up when done:
 
-## CI/CD (Jenkins)
+```powershell
+docker-compose down --volumes
+```
 
-The `Jenkinsfile` in repository root shows a canonical pipeline that:
+## Publish images to AWS ECR (example)
 
-- Checks out source code
-- Runs Maven build and unit tests
-- Builds Docker images
-- Pushes images to a registry (configure credentials in your Jenkins)
-- Applies deployment manifests to the target environment (example manifests included)
+1. Create an ECR repository (one-time):
 
-To adapt the pipeline:
+```powershell
+aws ecr create-repository --repository-name vproapp --region us-east-1
+```
 
-- Customize the Docker registry and credentials step.
-- Adjust build/test commands to match your Java/Maven settings.
-- Replace deployment steps with your environment's deployment strategy (kubectl, helm, or remote docker-compose deploy).
+2. Authenticate Docker to ECR and push:
 
-## Repository structure
+```powershell
+$ecrUri = "<your-account-id>.dkr.ecr.us-east-1.amazonaws.com/vproapp"
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.us-east-1.amazonaws.com
+docker tag vproapp:local $ecrUri:latest
+docker push $ecrUri:latest
+```
 
-Highlights of the repo layout:
+Replace `<your-account-id>` and `us-east-1` with your AWS account ID and region.
 
-- `Docker-files/` — `app/`, `db/`, `web/` Dockerfiles and nginx config
-- `docker-compose.yml` — Local compose orchestration
-- `Jenkinsfile` — Example pipeline for CI/CD
-- `*.yml` (`*-CIP.yml`, `*-dep.yml`) — Service and deployment manifests (RabbitMQ, DB, etc.)
-- `src/` — Java web application source, resources and tests
+## Create an EKS cluster (example with `eksctl`)
 
-## How to customize
+```powershell
+eksctl create cluster --name vproapp-cluster --region us-east-1 --nodes 3
+```
 
-- Swap the Maven/Java versions in the `Dockerfile` and Maven configuration.
-- Update environment variables in `docker-compose.yml` and the provided YAMLs for your infrastructure (DB credentials, hostnames, ports).
-- Add or remove services (e.g., Elasticsearch, Memcached) by editing the compose file and manifests.
+This command creates an EKS cluster and configures your `kubectl` `kubeconfig` automatically.
 
-## Suggested improvements / next steps
+## Deploy to your EKS cluster
 
-- Add a small architecture diagram (PNG/SVG) that shows CI pipeline and runtime topology.
-- Configure automated integration tests in the Jenkins pipeline.
-- Publish Docker images to a registry (Docker Hub, GitHub Container Registry, or private registry).
+1. Ensure `kubectl` is pointed at your cluster:
+
+```powershell
+kubectl get nodes
+```
+
+2. Update the Kubernetes manifests (service images) to point to your ECR image URIs. Example manifest edits:
+
+- set `image: <your-account-id>.dkr.ecr.<region>.amazonaws.com/vproapp:latest` in the deployment YAML.
+
+3. Apply manifests:
+
+```powershell
+kubectl apply -f vproappdep.yml
+kubectl apply -f rmq-dep.yml
+kubectl apply -f vprodbdep.yml
+```
+
+4. Monitor rollout:
+
+```powershell
+kubectl rollout status deployment/vproapp
+kubectl get pods -w
+```
+
+## CI/CD with Jenkins (recommended pipeline)
+
+High-level pipeline stages (see `Jenkinsfile`):
+
+- Checkout
+- Build and unit test (`mvn clean package`)
+- Build Docker images
+- Authenticate and push to container registry (AWS ECR)
+- Deploy to cluster (`kubectl apply` or Helm)
+
+Essential Jenkins configuration:
+
+- Add AWS credentials (access key/secret) and Docker registry credentials as Jenkins credentials.
+- Install necessary Jenkins plugins: Pipeline, Kubernetes CLI, Amazon ECR, Docker Pipeline (as needed).
+- Ensure the Jenkins agent has `docker`, `kubectl` and `aws` CLI available (or run these steps in a dockerized agent image).
+
+Example pipeline snippet (conceptual):
+
+```groovy
+pipeline {
+  agent any
+  environment {
+    ECR_REGISTRY = '<your-account-id>.dkr.ecr.us-east-1.amazonaws.com'
+    IMAGE_NAME = 'vproapp'
+  }
+  stages {
+    stage('Build') { steps { sh 'mvn clean package -DskipTests' } }
+    stage('Build Image') { steps { sh "docker build -t $ECR_REGISTRY/$IMAGE_NAME:latest -f Docker-files/app/Dockerfile ." } }
+    stage('Push Image') { steps { sh 'aws ecr get-login-password | docker login --username AWS --password-stdin $ECR_REGISTRY' ; sh 'docker push $ECR_REGISTRY/$IMAGE_NAME:latest' } }
+    stage('Deploy') { steps { sh 'kubectl apply -f vproappdep.yml' } }
+  }
+}
+```
+
+Adjust this snippet to match your Jenkins agents and credential management.
+
+## Configuration & Secrets
+
+- Keep secrets outside source control. Use Kubernetes Secrets, SSM Parameter Store, or Vault for database passwords, API keys, and other sensitive values.
+- Update `*-dep.yml` manifests to mount secrets or use environment variables from secret stores.
+
+## Security & IAM
+
+- Create an IAM role for your CI/CD service with permissions to push to ECR and update EKS resources (or use least-privilege service roles).
+- For EKS nodes, ensure node IAM role has proper permissions for pulling images from ECR and accessing any managed services.
+
+## Troubleshooting
+
+- `ImagePullBackOff` often means the image URI or auth is wrong — verify ECR repo, tags and that the cluster/node IAM role can pull images.
+- `CrashLoopBackOff` — check `kubectl logs <pod>` for stack traces or configuration errors.
+
+## Recommended next steps
+
+- Add a small architecture diagram (PNG/SVG) and link it from this README.
+- Harden the Jenkins pipeline (add tests, artifact signing, and rollback strategies).
+- Add GitHub Actions or other pipeline examples if you use non-Jenkins CI.
 
 ## Contributing
 
-Contributions are welcome. For changes to CI/CD files or Docker images, please ensure builds run locally (via Maven and Docker) and update the `Jenkinsfile` or compose manifests as needed.
+Contributions and improvements are welcome. Please open an issue for discussion or submit a pull request with clear descriptions of changes.
 
 ## Contact
 
