@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USER = '3booda24'
-        APP_IMAGE = 'vprofileapp'
-        DB_IMAGE = 'vprofiledb'
+        DOCKERHUB_USER = 'ahmedtaha141414'
+        APP_IMAGE = 'k8s-app-repo'
+        DB_IMAGE = 'k8s-db-repo'
         TAG = 'latest'
     }
 
@@ -12,7 +12,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'Main', url: 'https://github.com/vhmedtaha/vproapp-devops-cicd.git'
+                git branch: 'main', url: 'https://github.com/vhmedtaha/vproapp-devops-cicd.git'
             }
         }
 
@@ -52,16 +52,16 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                    # Apply only Kubernetes YAML files
-                    kubectl apply -f app-secret.yml
-                    kubectl apply -f db-CIP.yml
-                    kubectl apply -f mc-CIP.yml
-                    kubectl apply -f mcdep.yml
-                    kubectl apply -f rmq-CIP-service.yml
-                    kubectl apply -f rmq-dep.yml
-                    kubectl apply -f vproapp-service.yml
-                    kubectl apply -f vproappdep.yml
-                    kubectl apply -f vprodbdep.yml
+                    # Apply Kubernetes YAML files without verifying TLS
+                    kubectl --insecure-skip-tls-verify=true apply -f app-secret.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f db-CIP.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f mc-CIP.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f mcdep.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f rmq-CIP-service.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f rmq-dep.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f vproapp-service.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f vproappdep.yml
+                    kubectl --insecure-skip-tls-verify=true apply -f vprodbdep.yml
                 '''
             }
         }
@@ -76,4 +76,3 @@ pipeline {
         }
     }
 }
-

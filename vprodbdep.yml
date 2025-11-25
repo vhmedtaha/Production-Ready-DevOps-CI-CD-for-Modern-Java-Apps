@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: vprodb
-        image: 3booda24/vprofiledb
+        image: ahmedtaha141414/k8s-db-repo
         ports:
         - name: vprodb-port
           containerPort: 3306
