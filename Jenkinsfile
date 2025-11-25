@@ -12,7 +12,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vhmedtaha/vproapp-devops-cicd.git'
+                git branch: 'main', url: 'https://github.com/vhmedtaha/Production-Ready-DevOps-CI-CD-for-Modern-Java-Apps.git'
             }
         }
 
